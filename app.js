@@ -301,5 +301,8 @@ $(document).ready(function(e) {
 			console.log("File object returned contents");
 			parse(contents)
 		})
+
+		// reset value so .onchange will fire again despite same file being reuploaded
+		e.target.value = "";
 	})
 })
