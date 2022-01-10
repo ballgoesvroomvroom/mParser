@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale = 1.0" />
+
+		<link rel="stylesheet" href="index.css">
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=IBM+Plex+Mono&family=Raleway:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+		<link href="" rel="stylesheet">
+
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="app.js"></script>
+		<title>webpage</title>
+	</head>
+	<body style="max-width: 100%; min-height: 100vh">
+		<div id="topbar">
+			<div id="topbar-text">
+				Markdown parser
+			</div>
+		</div>
+		<div class="markdowncontainer" id="target" style="min-width: 100%; margin-top: 20px">
+			<div class="markdownpage">
+				<div class="markdowncontents">
+					<div class="markdownH1">
+						Code examples
+					</div>
+					<div class="markdownBR"></div>
+					<div class="markdownP">
+						Some code <span class="markdownCODE">blocks</span> below:
+					</div>
+					<div class="markdownCODEBLOCK"><div class="markdownCODEBLOCK-contents">import time<div>import timeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee</div><div></div><div>time.sleep(5)</div><div>def foo(x):</div><div>&#9;return x</div><div>print(foo(x))</div></div></div>
+					<div class="markdownBLOCKQUOTE">
+						<div class="markdownBLOCKQUOTE-line">
+						</div>
+						<div class="markdownBLOCKQUOTE-contents">
+							<div>This is a block quote</div>
+							<div>Built by FadedJ</div>
+						</div>
+					</div>
+					<div class="markdownP">
+						The following is very cool
+					</div>
+				</div>
+			</div>
+		</div>
+		<button id="buttoncontainer">
+			<div id="button-text">
+				Upload .md file:
+			</div>
+			<input type="file" id="uploadbutton" style="display: none;">
+		</button>
+	</body>
+</html>

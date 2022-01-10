@@ -1,0 +1,216 @@
+/* http://meyerweb.com/eric/tools/css/reset/ 
+   v2.0 | 20110126
+   License: none (public domain)
+*/
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+}
+/* HTML5 display-role reset for older browsers */
+article, aside, details, figcaption, figure, 
+footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+body {
+	line-height: 1;
+}
+ol, ul {
+	list-style: none;
+}
+blockquote, q {
+	quotes: none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+/* FINISH CSS RESET */
+body {
+	/*background-color: #f7f7f7;*/
+	background-color: #1f1f1f;
+}
+
+#topbar {
+	position: relative;
+	background-color: #333333;
+	min-width: 100%;
+	max-width: 100%;
+	min-height: /*116px;*/
+	max-height: 68px;
+	width: 100%;
+	height: 68px;
+	font-size: 1.5em;
+	font-weight: 400;
+	font-family: 'Raleway', sans-serif;
+	color: #e8e8e8;
+}
+
+#topbar-text {
+	position: absolute;
+	min-height: 48px;
+	padding: 10px 30px;
+}
+
+#buttoncontainer {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background-color: #383838;
+	width: 70%;
+	aspect-ratio: 12;
+	margin: 50px auto;
+	font-size: 2em;
+	font-weight: 400;
+	font-family: 'Raleway', sans-serif;
+	color: #e8e8e8;
+}
+
+.markdowncontainer {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	font-family: 'Barlow Condensed', sans-serif;
+	word-wrap: break-word;
+	margin-bottom: 5px; /* for the box-shadow of 5px vertically */
+}
+
+.markdownpage {
+	min-width: 80%;
+	max-width: 80%;
+	min-height: 100%;
+	border-radius: 0px;
+	background-color: #f0f0f0;
+	box-shadow: 5px 5px #d9d9d9;
+}
+
+.markdowncontents {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	padding: 30px;
+}
+
+.markdownH1 {
+	font-size: 4em;
+	font-weight: 600;
+	padding-top: 5px;
+}
+
+.markdownH2 {
+	font-size: 3em;
+	font-weight: 500;
+	padding-top: 5px;
+}
+
+.markdownH3 {
+	font-size: 2.7em;
+	font-weight: 300;
+	padding-top: 5px;
+}
+
+.markdownP {
+	font-size: 1.5em;
+	font-weight: 200;
+	line-height: 1.1em;
+	/*padding-bottom: 5px;*/
+}
+
+.markdownBR {
+	background-color: #c9c9c9;
+	border-radius: 2px;
+	min-width: 98%;
+	height: 3px;
+	margin-top: 10px;
+	margin-bottom: 27px;
+}
+
+.markdownIMG {
+	width: 100%;
+}
+
+.markdownIMG > img {
+	max-width: 100%;
+}
+
+.markdownCODE {
+	background-color: #e0e0e0;
+	padding-inline: 5px 5px;
+	border-radius: 3px;
+	font-family: 'IBM Plex Mono', monospace;
+	font-weight: 400;
+	font-size: 0.7em;
+	color: #7d7d7d;
+}
+
+.markdownBLOCKQUOTE {
+	position: relative;
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 0.9em;
+	color: #2b2b2b;
+	margin-top: 10px;
+	margin-bottom: 20px;
+}
+
+.markdownBLOCKQUOTE-line {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	background-color: #c2c2c2;
+	min-width: 5px;
+	max-width: 5px;
+	min-height: 100%;
+}
+
+.markdownBLOCKQUOTE-contents {
+	margin-left: 5px;
+	padding: 5px 10px;
+}
+
+.markdownCODEBLOCK {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 0.9em;
+	line-height: 1.6em;
+	margin-bottom: 20px;
+	width: 100%;
+}
+
+.markdownCODEBLOCK-contents {
+	margin: 10px 0;
+	padding: 10px 5px;
+	white-space: pre-wrap;
+	tab-size: 4;
+	border-radius: 5px;
+	background-color: #ebe6e6;
+}
+
+@media only screen and (min-width: 427px) {
+	/* topbar-message overfill is at 422px width */
+	#topbar {
+		min-height: 68px;
+		max-height: 68px;
+		height: 68px;
+		font-weight: 500;
+		font-size: 3em;
+	}
+}
