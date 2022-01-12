@@ -9,7 +9,7 @@ const r = {
 	"images_alttext": /(?<=!\[).*(?=\])/,
 	"images_info": /(?<=\().*(?=\))/,
 	"images_path": /.*\.(\bpng\b|\bjpg\b)/,
-	"images_desc": /(?<=["']).*(?=["'])/,
+	"images_title": /(?<=["']).*(?=["'])/,
 	"links": /(?<!\!)\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
 	"code": /(?<!`)`(?=[^`])/g,
 	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
@@ -98,13 +98,9 @@ function parserAction($targetviewer, resultCode) {
 
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
-<<<<<<< HEAD
 	// despite function's name, it handles writing/displaying too
-	const split = text.split("\r\n");
-=======
 	const split = text.split("\n");
 	console.log(split)
->>>>>>> 93fa094ea0001a33520bb58e65781264589f3efd
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 
 	// clear all rendered elements from $targetviewer
@@ -181,10 +177,8 @@ function parse(text) {
 		}
 
 		var data = {}; // store data here with the corresponding index with msg_split
+		// data for the other captures; such as images and links
 		for (let ia = 0; ia < msg_split_len; ia++) {
-<<<<<<< HEAD
-			var local_data = []; // array object to be pushed into data array object
-=======
 			// data
 			var i_msg = msg_split[ia]; // individual message
 			var img_match = i_msg.matchAll(r.images);
@@ -205,14 +199,41 @@ function parse(text) {
 			while (true) {
 				if (!img_match_obj.done) {
 					// match the alt_text, image path, image title
-					var result = img_match_obj.result
-					var alt_text = result.
+					var result = img_match_obj.value;
+					var alt_text = result[0].match(r.images_alttext);
+
+					// round brackets that store the filepath and the optional title
+					var info = result[0].match(r.images_info);
+					if (info == null) {
+						// no () shouldn't happen since r.images should capture only with parenthesis present
+						// ignore this general capture and move on to the next one since no filepath definition
+						img_match_obj = img_match.next();
+						continue
+					}
+
+					var path = info[0].match(r.images_path);
+					var title = info[0].match(r.images_title);
+
+					if (path == null) {
+						// no filepath; ignore this general capture and move on to the next one
+						img_match_obj = img_match.next();
+						continue
+					}
+
+					data[result.index] = {
+						"index": result.index,
+						"content": result[0],
+						"alt_text": alt_text != null ? alt_text[0] : "",
+						"path": path[0], // validated; can't be null
+						"title": title != null ? title[0] : ""
+					}
+				} else if (!link_match_obj.done) {
+					var result = link_match_obj.result;
 				}
 
 			}
 			
 			data[ia] = {"images": img_match};
->>>>>>> 93fa094ea0001a33520bb58e65781264589f3efd
 		}
 		console.log(msg_split)
 		if (msg_split.length == 1) {
@@ -227,6 +248,7 @@ function parse(text) {
 				// chained together, or it could be the leading br tags; either front or back
 				// console.log("v", v);
 				session.cached_content += msg_split[v];
+				session.currentcontext = 4; // set to paragraph
 				session.forced = true; // set to true so even if session.cached_content is ""; add a new line anyways; needed for multiple br tags chained together
 
 				if (v +1 == msg_split.length && msg_split[v +1] == "") {
