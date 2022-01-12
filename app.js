@@ -89,6 +89,7 @@ function parserAction($targetviewer, resultCode) {
 
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
+	// despite function's name, it handles writing/displaying too
 	const split = text.split("\r\n");
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 
@@ -117,8 +118,10 @@ function parse(text) {
 					// headers
 					divobject.html(session.cached_content);
 				case 4:
+					// paragraphs
 					divobject.html(session.cached_content == "" ? "&nbsp;" : session.cached_content); // default value to give div a width/height
 				case 5:
+					// images
 					divobject.attr({
 						"src": session.additional_data[0],
 						"alt": session.additional_data[1],
@@ -164,7 +167,7 @@ function parse(text) {
 
 		var data = []; // store data here with the corresponding index with msg_split
 		for (let ia = 0; ia < msg_split_len; ia++) {
-			continue
+			var local_data = []; // array object to be pushed into data array object
 		}
 		console.log(msg_split)
 		if (msg_split.length == 1) {
