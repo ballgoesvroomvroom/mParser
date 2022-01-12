@@ -2,6 +2,7 @@ const target = "test.md"
 const targetviewer = "#target"
 
 const r = {
+	// regex strings for searching
 	"brTag": /<br[\s]*(?:\/>|>)/g,
 	"header": /^#*\s/,
 	"images": /\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
@@ -10,7 +11,15 @@ const r = {
 	"images_path": /.*\.(\bpng\b|\bjpg\b)/,
 	"images_desc": /(?<=["']).*(?=["'])/,
 	"links": /(?<!\!)\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
-	"code": /(?<!\\)`.*?(?<!\\)`/g
+	"code": /(?<!`)`(?=[^`])/g,
+	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
+	"quoteblock": /^(?<!=\\)>/g
+}
+
+function fetchfilefromserver(path) {
+	return fetch(path).then(function(response) {
+		return response.text()
+	})
 }
 
 function readfile(file) {
@@ -89,8 +98,13 @@ function parserAction($targetviewer, resultCode) {
 
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
+<<<<<<< HEAD
 	// despite function's name, it handles writing/displaying too
 	const split = text.split("\r\n");
+=======
+	const split = text.split("\n");
+	console.log(split)
+>>>>>>> 93fa094ea0001a33520bb58e65781264589f3efd
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 
 	// clear all rendered elements from $targetviewer
@@ -106,7 +120,6 @@ function parse(text) {
 		"push": function() { // takes in cached_content with currentcontext
 			console.log(session.cached_content, session.forced)
 			if (session.cached_content == "" && !session.forced) {
-				console.log("RETURNED")
 				return
 			}
 
@@ -145,6 +158,8 @@ function parse(text) {
 
 	for (let i = 0; i < split.length; i++) {
 		var msg = split[i];
+		console.log(msg);
+		console.log("=============")
 
 		// search for br tags; <br /> works too; any amount of whitespace before the slash
 		var msg_split = msg.split(r.brTag);
@@ -165,22 +180,52 @@ function parse(text) {
 			continue // exit when a header is found
 		}
 
-		var data = []; // store data here with the corresponding index with msg_split
+		var data = {}; // store data here with the corresponding index with msg_split
 		for (let ia = 0; ia < msg_split_len; ia++) {
+<<<<<<< HEAD
 			var local_data = []; // array object to be pushed into data array object
+=======
+			// data
+			var i_msg = msg_split[ia]; // individual message
+			var img_match = i_msg.matchAll(r.images);
+			var img_match_obj = img_match.next();
+
+			var link_match = i_msg.matchAll(r.links);
+			var link_match_obj = line_match.next();
+
+			var code_match = i_msg.matchAll(r.code);
+			var code_match_obj = code_match_obj.next();
+
+			var codeblock_match = i_msg.matchAll(r.codeblock);
+			var codeblock_match_obj = codeblock_match.next();
+
+			var quoteblock_match = i_msg.matchAll(r.quoteblock);
+			var quoteblock_match_obj = quoteblock_match.next();
+			
+			while (true) {
+				if (!img_match_obj.done) {
+					// match the alt_text, image path, image title
+					var result = img_match_obj.result
+					var alt_text = result.
+				}
+
+			}
+			
+			data[ia] = {"images": img_match};
+>>>>>>> 93fa094ea0001a33520bb58e65781264589f3efd
 		}
 		console.log(msg_split)
 		if (msg_split.length == 1) {
-			console.log("no br tags");
+			// console.log("no br tags");
 			// no br tags
 			session.cached_content += msg
 		} else {
 			// one or multiple br tags
-			console.log("br tags everywhere!! >:)");
+			// console.log("br tags everywhere!! >:)");
 			for (let v = 0; v < msg_split_len; v++) {
 				// if msg_split[v] is ""; second or more occurrence of the br tag
 				// chained together, or it could be the leading br tags; either front or back
-				console.log("v", v);
+				// console.log("v", v);
 				session.cached_content += msg_split[v];
 				session.forced = true; // set to true so even if session.cached_content is ""; add a new line anyways; needed for multiple br tags chained together
 
@@ -307,5 +352,14 @@ $(document).ready(function(e) {
 
 		// reset value so .onchange will fire again despite same file being reuploaded
 		e.target.value = "";
+	})
+
+	var re = fetchfilefromserver("test.md").then(function(text) {
+		console.log(text);
+		// text_promiseobject.then(function(returned_string){
+		// 	console.log(returned_string)
+		// 	parse(returned_string)
+		// })
+		parse(text)
 	})
 })
