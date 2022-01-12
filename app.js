@@ -11,6 +11,8 @@ const r = {
 	"images_path": /.*\.(\bpng\b|\bjpg\b)/,
 	"images_title": /(?<=["']).*(?=["'])/,
 	"links": /(?<!\!)\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
+	"links_text": /(?<=\[).*(?=\])/g,
+	"links_content": /(?<=\().*(?=\))/g,
 	"code": /(?<!`)`(?=[^`])/g,
 	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
 	"quoteblock": /^(?<!=\\)>/g
@@ -227,8 +229,9 @@ function parse(text) {
 						"path": path[0], // validated; can't be null
 						"title": title != null ? title[0] : ""
 					}
+					img_match_obj = img_match.next()
 				} else if (!link_match_obj.done) {
-					var result = link_match_obj.result;
+					var result = link_match_obj.value;
 				}
 
 			}
