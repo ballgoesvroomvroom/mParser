@@ -4,8 +4,8 @@ const targetviewer = "#target"
 const r = {
 	// regex strings for searching
 	"brTag": /<br[\s]*(?:\/>|>)/g,
-	"header": /^#*\s/,
-	"images": /\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
+	"header": /^(?<!\\)#{1,3}(?![^\s])/,
+	"images": /!\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
 	"images_alttext": /(?<=!\[).*(?=\])/,
 	"images_info": /(?<=\().*(?=\))/,
 	"images_path": /.*\.(\bpng\b|\bjpg\b)/,
@@ -70,14 +70,17 @@ function parserAction($targetviewer, resultCode) {
 
 			return $header2
 		case 3:
-			// header3
+		case 4:
+		case 5:
+		case 6:
+			// header3; header4; header5; header6
 			let $header3 = $("<div>", {
 				"class": "markdownH3"
 			});
 			$header3.appendTo($targetviewer);
 
 			return $header3
-		case 4:
+		case 7:
 			// normal text; p tag
 			let $paragraph = $("<div>", {
 				"class": "markdownP"
@@ -85,7 +88,7 @@ function parserAction($targetviewer, resultCode) {
 			$paragraph.appendTo($targetviewer);
 
 			return $paragraph
-		case 5:
+		case 8:
 			// image
 			let $imagecontainer = $("<div>", {
 				"class": "markdownIMG"
@@ -101,7 +104,7 @@ function parserAction($targetviewer, resultCode) {
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
 	// despite function's name, it handles writing/displaying too
-	const split = text.split("\n");
+	const split = text.split(/\r?\n/g);
 	console.log(split)
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 
@@ -111,13 +114,14 @@ function parse(text) {
 	// variables for storage/memory purposes
 	var session = {
 		"linenumber": 0, // for reading purposes only; will be handled internally
-		"currentcontext": 4, // 4 for paragraph; follows parserAction
+		"currentcontext": 7, // 7 for paragraph; follows parserAction
 		"cached_content": "", // store the current parsed content here; used in push method
 		"additional_data": [], // store additional data that could be use when calling push method
 		"forced": false,
 		"push": function() { // takes in cached_content with currentcontext
-			console.log(session.cached_content, session.forced)
-			if (session.cached_content == "" && !session.forced) {
+			console.log("("+session.cached_content+")", session.forced, session.cached_content.length)
+			if (session.cached_content == " " && !session.forced) {
+				console.log("RETURNED")
 				return
 			}
 
@@ -126,28 +130,40 @@ function parse(text) {
 				case 1:
 				case 2:
 				case 3:
+				case 4:
+				case 5:
+				case 6:
 					// headers
 					divobject.html(session.cached_content);
-				case 4:
+					break
+				case 7:
 					// paragraphs
-					divobject.html(session.cached_content == "" ? "&nbsp;" : session.cached_content); // default value to give div a width/height
-				case 5:
+					divobject.html(session.cached_content == " " ? "&nbsp;" : session.cached_content); // default value to give div a width/height
+					// match against a string with one space since one space was added as padding for next line
+					break
+				case 8:
 					// images
 					divobject.attr({
 						"src": session.additional_data[0],
 						"alt": session.additional_data[1],
 						"title": session.additional_data[2],
 					})
+					break
 			}
 
 			// empty content
 			session.cached_content = "";
 
+			// empty additional_data
+
+
 			// reset context
-			session.currentcontext = 4;
+			session.currentcontext = 7;
 
 			// toggle off .forced
+			console.log("PREV", session.forced);
 			session.forced = false;
+			console.log("AFTE", session.forced)
 
 			// new line
 			session.linenumber++
@@ -155,25 +171,33 @@ function parse(text) {
 	}
 
 	for (let i = 0; i < split.length; i++) {
+		// main loop that iterates over each line of content
 		var msg = split[i];
 		console.log(msg);
-		console.log("=============")
+		if (msg === "") {
+			console.log("skipped");
+			session.forced = true;
+			session.push();
+			continue // empty newline?
+		}
 
 		// search for br tags; <br /> works too; any amount of whitespace before the slash
 		var msg_split = msg.split(r.brTag);
 		var msg_split_len = msg_split.length; // so no need to recalculate when using for loop? optimisations, not too sure. (っ °Д °;)っ
+
 		// headers; since <br> tags are filtered out now
 		result = msg.match(r.header); // match the entire line; regardless of split
-		if (result !== null && result[0].length >= 2 && result[0].length <= 4) {
-			// validate that captured string's length is only between 2 and 4
-			// '## '; captured header 2, string length of 3; etc
+		if (result !== null) {
+			// valid header
 
 			// push current text; if empty will handle internally in push method
 			session.push();
 
-			// one of the three headers
-			session.cached_content = msg_split.join("").slice(result[0].length); // join back the splitted line from <br> tags; clears <br> tags from our message
-			session.currentcontext = result[0].length -1; // 1 for header 1, 2 for header 2 etc
+			session.cached_content = msg_split.join("").slice(result[0].length +1); // join back the splitted line from <br> tags; clears <br> tags from our message
+			session.forced = true; // session.cached_content can be empty; empty header
+			console.log("HEADER", session.cached_content)
+			// result[0] being the captured string, such as '#' etc
+			session.currentcontext = result[0].length; // 1 for header 1, 2 for header 2 etc
 			session.push();
 			continue // exit when a header is found
 		}
@@ -181,16 +205,23 @@ function parse(text) {
 		var data = {}; // store data here with the corresponding index with msg_split
 		// data for the other captures; such as images and links
 		for (let ia = 0; ia < msg_split_len; ia++) {
-			// data
+			// capture all kinds of stuff here; links, images etc
 			var i_msg = msg_split[ia]; // individual message
+			if (i_msg == "") {
+				// empty string; can skip all the captures
+				// data[ia] will be null
+				continue
+			}
+			var i_data = {} // individual data to be pushed to data
+
 			var img_match = i_msg.matchAll(r.images);
 			var img_match_obj = img_match.next();
 
 			var link_match = i_msg.matchAll(r.links);
-			var link_match_obj = line_match.next();
+			var link_match_obj = link_match.next();
 
 			var code_match = i_msg.matchAll(r.code);
-			var code_match_obj = code_match_obj.next();
+			var code_match_obj = code_match.next();
 
 			var codeblock_match = i_msg.matchAll(r.codeblock);
 			var codeblock_match_obj = codeblock_match.next();
@@ -198,7 +229,12 @@ function parse(text) {
 			var quoteblock_match = i_msg.matchAll(r.quoteblock);
 			var quoteblock_match_obj = quoteblock_match.next();
 			
-			while (true) {
+			var all_is_running = true; // will be set false by loop and true by each iteration of .next() from .matchAll()
+			var i_data_isempty = 0; // increment this as the loop goes on; not actual representation of length
+			// since the while loop would need to loop over once more and the last loop doing nothing (to verify closure), if i_data_isempty is 1, only one iteration and not two, i_data is empty since nothing was added
+			while (all_is_running) {
+				all_is_running = false;
+				i_data_isempty++;
 				if (!img_match_obj.done) {
 					// match the alt_text, image path, image title
 					var result = img_match_obj.value;
@@ -222,7 +258,8 @@ function parse(text) {
 						continue
 					}
 
-					data[result.index] = {
+					i_data[result.index] = {
+						"type": "images",
 						"index": result.index,
 						"content": result[0],
 						"alt_text": alt_text != null ? alt_text[0] : "",
@@ -230,40 +267,117 @@ function parse(text) {
 						"title": title != null ? title[0] : ""
 					}
 					img_match_obj = img_match.next()
-				} else if (!link_match_obj.done) {
-					var result = link_match_obj.value;
-				}
 
+					all_is_running = true;
+				}
+				if (!link_match_obj.done) {
+					var result = link_match_obj.value;
+
+					all_is_running = true;
+				}
 			}
 			
-			data[ia] = {"images": img_match};
+			if (i_data_isempty === 1) {
+				// i_data is empty; > 1 then it isn't empty
+				continue
+			}
+			data[ia] = i_data
 		}
-		console.log(msg_split)
-		if (msg_split.length == 1) {
-			// console.log("no br tags");
-			// no br tags
-			session.cached_content += msg
-		} else {
-			// one or multiple br tags
-			// console.log("br tags everywhere!! >:)");
-			for (let v = 0; v < msg_split_len; v++) {
-				// if msg_split[v] is ""; second or more occurrence of the br tag
-				// chained together, or it could be the leading br tags; either front or back
-				// console.log("v", v);
-				session.cached_content += msg_split[v];
-				session.currentcontext = 4; // set to paragraph
-				session.forced = true; // set to true so even if session.cached_content is ""; add a new line anyways; needed for multiple br tags chained together
+		console.log(data, msg_split)
+		for (let v = 0; v < msg_split_len; v++) {
+			// if msg_split[v] is ""; second or more occurrence of the br tag
+			// chained together, or it could be the leading br tags; either front or back
+			// console.log("v", v);
+			console.log("loopey loop:", msg_split[v])
 
-				if (v +1 == msg_split.length && msg_split[v +1] == "") {
-					// empty string means a br tag was there
-					session.push()
+			var line_contents = []; // store the segmented contents of the line here
 
-					// don't push if the last occurrence isnt a br tag, carry forward
-				} else if (v +1 < msg_split.length) {
-					// push it regardless
-					session.push()
+			// see if anything got captured
+			var r_data = data[v]; // read data
+			if (r_data != null) {
+				// if not null; not empty data, msg_split[v] != ""
+				var currentpointerindex = 0; // store the pointer index here used for slicing
+				for (const [index, d] of Object.entries(data[v])) {
+					if (d.index != 0) {
+						line_contents.push({
+							"type": 7, // set to paragraph content
+							"content": msg_split[v].slice(currentpointerindex, d.index)
+						})
+					}
+					switch (d.type) {
+						case "images":
+							line_contents.push({
+								"type": 8,
+								"alt_text": d.alt_text,
+								"path": d.path,
+								"title": d.title
+							})
+					}
+					currentpointerindex = d.index +d.content.length;
+				}
+				// last push for the last content
+				if (!(currentpointerindex +1 === msg_split[v].length)) {
+					// didn't capture the entire string
+					line_contents.push({
+						"type": 7,
+						"content": msg_split[v].slice(currentpointerindex)
+					})
+				}
+			} else {
+				line_contents = [{"type": 7, "content": msg_split[v]}]
+			}
+
+			console.log("line_contents:", line_contents)
+			var line_contents_length = line_contents.length;
+			for (let vi = 0; vi < line_contents_length; vi++) {
+				var d = line_contents[vi]
+				switch (d.type) {
+					case 7:
+						session.currentcontext = 7;
+						session.cached_content += d.content +" "; // an empty string to append to next line
+						break
+					case 8:
+						// imaqges
+						session.forced = false;
+						session.push(); // push already existing contents
+						session.currentcontext = 8;
+						session.additional_data = [
+							d.path,
+							d.alt_text,
+							d.title
+						];
+
+						session.forced = true;
+						session.push()
+
 				}
 			}
+
+			console.log("checking with", msg_split[v])
+			session.forced = true; // set to true so even if session.cached_content is ""; add a new line anyways; needed for multiple br tags chained together
+			if (msg_split[v +1] === "" && v +2 === msg_split_len) {
+				// do a lookahead, if element ahead is a "", push
+				console.log("A");
+				session.push();
+			} else if (msg_split[v] == "" && v +1 === msg_split_len) {
+				// don't push; do nothing; last element in br split result is an empty string but already newline on previous iteration due to lookahead implementation
+				console.log("B");
+			} else if (v +1 === msg_split_len) {
+				// do nothing; don't push; last element isnt a br tag
+				console.log("C");
+			} else {
+				console.log("D");
+				session.push();
+			}
+			// if (v +1 == msg_split.length && msg_split[v +1] == "") {
+			// 	// empty string means a br tag was there
+			// 	session.push()
+
+			// 	// don't push if the last occurrence isnt a br tag, carry forward
+			// } else if (v +1 < msg_split.length) {
+			// 	// push it regardless
+			// 	session.push()
+			// }
 		}
 		// session.currentcontext
 		// var master_split = []; // split each element in msg_split with imglinks as delimiter
@@ -379,12 +493,8 @@ $(document).ready(function(e) {
 		e.target.value = "";
 	})
 
-	var re = fetchfilefromserver("test.md").then(function(text) {
-		console.log(text);
-		// text_promiseobject.then(function(returned_string){
-		// 	console.log(returned_string)
-		// 	parse(returned_string)
-		// })
-		parse(text)
-	})
+	// var re = fetchfilefromserver("https://raw.githubusercontent.com/ballgoesvroomvroom/demoMarkdowncontent/main/README.md").then(function(text) {
+	// 	console.log(text);
+	// 	parse(text)
+	// })
 })
