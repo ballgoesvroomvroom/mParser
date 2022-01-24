@@ -8,14 +8,80 @@ const r = {
 	"images": /!\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
 	"images_alttext": /(?<=!\[).*(?=\])/,
 	"images_info": /(?<=\().*(?=\))/,
-	"images_path": /.*\.(\bpng\b|\bjpg\b)/,
+	"images_path": /.*\.(\bpng\b|\bjpg\b|\bwebp\b)/,
 	"images_title": /(?<=["']).*(?=["'])/,
-	"links": /(?<!\!)\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
-	"links_text": /(?<=\[).*(?=\])/g,
-	"links_content": /(?<=\().*(?=\))/g,
-	"code": /(?<!`)`(?=[^`])/g,
+	"links": /(?<!!)\[(\[??[^\[\r\n]*?){1}\]\((\[??[^\(\r\n]*){1}\)/g,
+	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
 	"quoteblock": /^(?<!=\\)>/g
+}
+
+class Tokeniser {
+	contents = "";
+
+	constructor() {
+		this.tokens = []; // store created token ojects in order here
+		this.contents = ""; // store token actual contents here; used to create token object
+		this.is_raw = false; // whether to capture tags
+		this.linenumber = 0; // actual line number in the rendered document
+		this.currentcontext = 0 // the current context; whether if its a paragraph or a code block
+	}
+
+	set contents(new_content) {
+		console.log("setting", this, new_content)
+		if (this.contents.length > 0) {
+			// has content already; add a space as padding
+			this.contents += " ";
+		}
+		this.contents += new_content
+	}
+
+	clear() {
+		this.contents = "";
+	}
+
+	push(...data) {
+		// push collected (and finalised) token into this.tokens
+		let token_data = {
+			"line_number": this.linenumber,
+			"currentcontext": this.currentcontext
+		}
+		switch (this.currentcontext) {
+			case 1:
+			case 2:
+			case 3:
+			case 4:
+			case 5:
+			case 6:
+			case 7:
+				// all 6 headers & paragraph
+				if (this.contents.length === 0) {
+					// empty
+					this.contents = "&nbsp;"
+				}
+
+				token_data.contents = this.contents
+			case 8:
+				// images
+				token_data.alt_text = data[0],
+				token_data.title = data[1],
+				token_data.path = data[2]
+			case 9:
+				// hyperlinks
+				token_data.text = data[0],
+				token_data.dest = data[1]
+			case 10:
+				// code, `
+		}
+
+		this.tokens.push(token_data);
+		this.clear(); // clear all the data in .contents
+	}
+}
+
+function format_tag(tag) {
+	// replaces all '<' and '>' with '&lt;' and '&gt;' respectively to render it as plain text
+	return tag.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function fetchfilefromserver(path) {
@@ -98,18 +164,114 @@ function parserAction($targetviewer, resultCode) {
 			$image.appendTo($imagecontainer)
 
 			return $image
+		case 9:
+			// links, [text](route)
+		case 10:
+			// codes, `
 	}
+}
+
+function tokenise(text) {
+	// returns a dict containing tokens
+	const text_split = text.split(/\r?\n/);
+	const tokeniser_object = new Tokeniser();
+	console.log(tokeniser_object);
+
+	let split_len = text_split.length;
+	for (let fileline_number = 0; fileline_number < split_len; fileline_number++) {
+		var line_contents = text_split[fileline_number];
+
+		// match all info here
+		// find br tags
+		if (!tokeniser_object.is_raw) {
+			if (line_contents.length === 0) {
+				// empty file line
+				if (tokeniser_object.currentcontext === 10) {
+					tokeniser_object.linenumber++;
+					tokeniser_object.currentcontext = 7;
+					tokeniser_object.push(); // not a code; disregard it
+				}
+				tokeniser_object.linenumber++;
+				tokeniser_object.currentcontext = 7;
+				tokeniser_object.push();
+
+				continue
+			}
+			// match for headers first
+			var header = line_contents.match(r.header);
+			if (header !== null) {
+				if (tokeniser_object.contents.length > 0) {
+					tokeniser_object.push() // push whatever is inside; unless empty
+				}
+
+				tokeniser_object.linenumber++; // move to next line
+				tokeniser_object.currentcontext	= header.length;
+				tokeniser_object.contents = line_contents.slice(header.length +1, -1);
+				tokeniser_object.push()
+			}
+			var br_match = line_contents.matchAll(r.brTag);
+			var br_match_obj = br_match.next();
+
+			if (br_match_obj.done) {
+				// no br tags in the enitre file line
+				tokeniser_object.contents = line_contents
+			} else {
+				var lastPointerIndex = 0; // store the last br tag end's index
+				while(!br_match_obj.done) {
+					var result = br_match_obj.value;
+					var focused = line_contents.slice(lastPointerIndex, result.index); // section of the file line that is for the new document line
+
+					// find other tokens
+					var events = {} // store all the found match here
+					var code = focused.matchAll(r.code);
+					var code_match = code.next();
+
+					var searching = true;
+					while (searching) {
+						searching = false;
+
+						if (!code_match.done) {
+							var result = code_match.value;
+							events[result.index] +=
+
+							code_match = code.next()
+						}
+					}
+
+
+					tokeniser_object.linenumber++;
+					tokeniser_object.contents = focused;
+					tokeniser_object.currentcontext = 7;
+					tokeniser_object.push();
+
+					lastPointerIndex = result.index +result[0].length; // end index of captured string
+					br_match_obj = br_match.next()
+				}
+			}
+		} else {
+			tokeniser_object.linenumber++;
+			tokeniser_object.contents = line_contents;
+			tokeniser_object.currentcontext = 7;
+			tokeniser_object.push()
+		}
+	}
+
+	if (tokeniser_object.contents.length > 0) {
+		tokeniser_object.linenumber++;
+		tokeniser_object.push()
+	}
+	console.log(tokeniser_object.tokens)
 }
 
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
 	// despite function's name, it handles writing/displaying too
 	const split = text.split(/\r?\n/g);
-	console.log(split)
+	console.log(split);
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 
 	// clear all rendered elements from $targetviewer
-	$targetviewer.empty()
+	$targetviewer.empty();
 
 	// variables for storage/memory purposes
 	var session = {
@@ -118,12 +280,21 @@ function parse(text) {
 		"cached_content": "", // store the current parsed content here; used in push method
 		"additional_data": [], // store additional data that could be use when calling push method
 		"forced": false,
-		"push": function() { // takes in cached_content with currentcontext
+		"reroute": function() { // re-route specified cases to normal cases; such as codes to paragraphs
+			switch (session.currentcontext) {
+				case 10:
+					session.currentcontext = 7;
+			}
+		},
+		"push": function() { // takes in cached_content with currentcontext and pushes cached_content with the appropriate context to a single line
 			console.log("("+session.cached_content+")", session.forced, session.cached_content.length)
-			if (session.cached_content == " " && !session.forced) {
-				console.log("RETURNED")
+			if (session.cached_content == "" && !session.forced) {
+				console.log("RETURNED");
 				return
 			}
+
+			// re-route specified cases to normal cases; such as codes to paragraphs
+			session.reroute();
 
 			var divobject = parserAction($targetviewer, session.currentcontext);
 			switch (session.currentcontext) {
@@ -135,11 +306,13 @@ function parse(text) {
 				case 6:
 					// headers
 					divobject.html(session.cached_content);
+
+					// reset context to paragraph
+					session.currentcontext = 7;
 					break
 				case 7:
 					// paragraphs
-					divobject.html(session.cached_content == " " ? "&nbsp;" : session.cached_content); // default value to give div a width/height
-					// match against a string with one space since one space was added as padding for next line
+					divobject.html(session.cached_content == "" ? "&nbsp;" : session.cached_content); // default value to give div a width/height
 					break
 				case 8:
 					// images
@@ -149,6 +322,13 @@ function parse(text) {
 						"title": session.additional_data[2],
 					})
 					break
+				case 9:
+					// links
+					// do nothing since <a> tag is inserted directly
+				case 10:
+					// codes
+					// do nothing since <span class=""> tag is inserted directly
+
 			}
 
 			// empty content
@@ -158,12 +338,10 @@ function parse(text) {
 
 
 			// reset context
-			session.currentcontext = 7;
+			// session.currentcontext = 7; // don't reset context, needed to determine context after each push to a line
 
 			// toggle off .forced
-			console.log("PREV", session.forced);
 			session.forced = false;
-			console.log("AFTE", session.forced)
 
 			// new line
 			session.linenumber++
@@ -171,10 +349,10 @@ function parse(text) {
 	}
 
 	for (let i = 0; i < split.length; i++) {
-		// main loop that iterates over each line of content
+		// main loop that iterates over each line of content within the file
 		var msg = split[i];
-		console.log(msg);
-		if (msg === "") {
+		console.log("msg:", msg);
+		if (msg === "" && session.currentcontext !== 10) {
 			console.log("skipped");
 			session.forced = true;
 			session.push();
@@ -266,12 +444,33 @@ function parse(text) {
 						"path": path[0], // validated; can't be null
 						"title": title != null ? title[0] : ""
 					}
-					img_match_obj = img_match.next()
+					img_match_obj = img_match.next();
 
 					all_is_running = true;
 				}
 				if (!link_match_obj.done) {
 					var result = link_match_obj.value;
+
+					i_data[result.index] = {
+						"type": "links",
+						"index": result.index,
+						"content": result[0],
+						"text": result[1], // will be empty if left out; <a> tag will handle empty title 
+						"link": result[2]
+					}
+					link_match_obj = link_match.next();
+
+					all_is_running = true;
+				}
+				if (!code_match_obj.done) {
+					var result = code_match_obj.value;
+
+					i_data[result.index] = {
+						"type": "codes",
+						"index": result.index,
+						"content": result[0],
+					}
+					code_match_obj = code_match.next();
 
 					all_is_running = true;
 				}
@@ -288,16 +487,22 @@ function parse(text) {
 			// if msg_split[v] is ""; second or more occurrence of the br tag
 			// chained together, or it could be the leading br tags; either front or back
 			// console.log("v", v);
-			console.log("loopey loop:", msg_split[v])
+			console.log("loopey loop:", msg_split[v], msg_split[v].length)
 
 			var line_contents = []; // store the segmented contents of the line here
 
 			// see if anything got captured
 			var r_data = data[v]; // read data
-			if (r_data != null) {
+			if (r_data != null && session.currentcontext !== 10) {
 				// if not null; not empty data, msg_split[v] != ""
 				var currentpointerindex = 0; // store the pointer index here used for slicing
-				for (const [index, d] of Object.entries(data[v])) {
+				for (let index = 0; index < msg_split[v].length; index++) {
+					// since r_data is populated with character index position as keys; limit should be the entire string's length
+					if (r_data[index] == null) {
+						continue; // move onto the next iteration
+					}
+					var d = r_data[index];
+
 					if (d.index != 0) {
 						line_contents.push({
 							"type": 7, // set to paragraph content
@@ -312,11 +517,23 @@ function parse(text) {
 								"path": d.path,
 								"title": d.title
 							})
+						case "links":
+							line_contents.push({
+								"type": 9,
+								"text": d.text,
+								"link": d.link
+							})
+						case "codes":
+							line_contents.push({
+								"type": 10,
+								"index": d.index
+							})
 					}
 					currentpointerindex = d.index +d.content.length;
 				}
 				// last push for the last content
-				if (!(currentpointerindex +1 === msg_split[v].length)) {
+				console.log("currpointindex:", currentpointerindex)
+				if (!(currentpointerindex === msg_split[v].length)) {
 					// didn't capture the entire string
 					line_contents.push({
 						"type": 7,
@@ -327,14 +544,23 @@ function parse(text) {
 				line_contents = [{"type": 7, "content": msg_split[v]}]
 			}
 
-			console.log("line_contents:", line_contents)
+			console.log("line_contents:", line_contents);
 			var line_contents_length = line_contents.length;
+
+			// state tracking
+			if (session.cached_content.length > 0) {
+				// has contents before (on the previous line), add a space as a padding
+				session.cached_content += "";
+			}
 			for (let vi = 0; vi < line_contents_length; vi++) {
+				console.log("session.cached_content:", session.cached_content);
+				console.log("sesstion.currentcontext:", session.currentcontext);
 				var d = line_contents[vi]
 				switch (d.type) {
 					case 7:
-						session.currentcontext = 7;
-						session.cached_content += d.content +" "; // an empty string to append to next line
+						// normal paragraph
+						// session.currentcontext = 7; // don't set it back
+						session.cached_content += d.content;
 						break
 					case 8:
 						// imaqges
@@ -348,13 +574,33 @@ function parse(text) {
 						];
 
 						session.forced = true;
-						session.push()
-
+						session.push();
+						break
+					case 9:
+						// links
+						console.log("links present")
+						session.cached_content += `<a href="${d.link}">${d.text}</a>`
+					case 10:
+						// codes
+						if (session.currentcontext == 10) {
+							console.log("CLOSED")
+							session.cached_content += "</span>";
+							session.currentcontext = 7;
+						} else {
+							// start a new code
+							console.log("OPENED")
+							session.cached_content += '<span class="markdownCODE">';
+							session.currentcontext = 10;
+						}
 				}
 			}
 
 			console.log("checking with", msg_split[v])
 			session.forced = true; // set to true so even if session.cached_content is ""; add a new line anyways; needed for multiple br tags chained together
+			if (session.currentcontext === 10) {
+				// within code
+				session.cached_content += format_tag("<br>")
+			}
 			if (msg_split[v +1] === "" && v +2 === msg_split_len) {
 				// do a lookahead, if element ahead is a "", push
 				console.log("A");
@@ -486,7 +732,8 @@ $(document).ready(function(e) {
 		console.log("Created file object");
 		$.when(fileobject).done(function(contents) {
 			console.log("File object returned contents");
-			parse(contents)
+			tokenise(contents);
+			// parse(contents)
 		})
 
 		// reset value so .onchange will fire again despite same file being reuploaded
