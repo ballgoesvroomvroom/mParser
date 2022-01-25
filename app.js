@@ -5,11 +5,7 @@ const r = {
 	// regex strings for searching
 	"brTag": /<br[\s]*(?:\/>|>)/g,
 	"header": /^(?<!\\)#{1,3}(?![^\s])/,
-	"images": /!\[(?:\[??[^\[]*?\])\((?:\[??[^\[]*\))/g,
-	"images_alttext": /(?<=!\[).*(?=\])/,
-	"images_info": /(?<=\().*(?=\))/,
-	"images_path": /.*\.(\bpng\b|\bjpg\b|\bwebp\b)/,
-	"images_title": /(?<=["']).*(?=["'])/,
+	"images": /!\[(\[??[^\[]*?)\]\(([\w\d\/:]*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
 	"links": /(?<!!)\[(\[??[^\[\r\n]*?){1}\]\((\[??[^\(\r\n]*){1}\)/g,
 	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
@@ -17,27 +13,30 @@ const r = {
 }
 
 class Tokeniser {
-	contents = "";
-
 	constructor() {
 		this.tokens = []; // store created token ojects in order here
-		this.contents = ""; // store token actual contents here; used to create token object
+		this._contents = ""; // actual storage of token's details when constructing them
+		this.contents = ""; // acts as a proxy to write ctual token details to ._contents
 		this.is_raw = false; // whether to capture tags
+		this.is_raw_esccond = 0; // escape condition for raw input and display such as code or code blocks
 		this.linenumber = 0; // actual line number in the rendered document
 		this.currentcontext = 0 // the current context; whether if its a paragraph or a code block
 	}
 
+	get contents() {
+		return this._contents
+	}
+
 	set contents(new_content) {
-		console.log("setting", this, new_content)
-		if (this.contents.length > 0) {
+		if (this._contents.length > 0) {
 			// has content already; add a space as padding
-			this.contents += " ";
+			this._contents += " ";
 		}
-		this.contents += new_content
+		this._contents += new_content
 	}
 
 	clear() {
-		this.contents = "";
+		this._contents = "";
 	}
 
 	push(...data) {
@@ -55,12 +54,12 @@ class Tokeniser {
 			case 6:
 			case 7:
 				// all 6 headers & paragraph
-				if (this.contents.length === 0) {
+				if (this._contents.length === 0) {
 					// empty
-					this.contents = "&nbsp;"
+					this._contents = "&nbsp;"
 				}
 
-				token_data.contents = this.contents
+				token_data.contents = this._contents
 			case 8:
 				// images
 				token_data.alt_text = data[0],
@@ -195,7 +194,7 @@ function tokenise(text) {
 				tokeniser_object.currentcontext = 7;
 				tokeniser_object.push();
 
-				continue
+				continue // move on to the next file line
 			}
 			// match for headers first
 			var header = line_contents.match(r.header);
@@ -208,46 +207,114 @@ function tokenise(text) {
 				tokeniser_object.currentcontext	= header.length;
 				tokeniser_object.contents = line_contents.slice(header.length +1, -1);
 				tokeniser_object.push()
+
+				continue // move on to the next file line
 			}
-			var br_match = line_contents.matchAll(r.brTag);
-			var br_match_obj = br_match.next();
 
-			if (br_match_obj.done) {
-				// no br tags in the enitre file line
-				tokeniser_object.contents = line_contents
-			} else {
-				var lastPointerIndex = 0; // store the last br tag end's index
-				while(!br_match_obj.done) {
-					var result = br_match_obj.value;
-					var focused = line_contents.slice(lastPointerIndex, result.index); // section of the file line that is for the new document line
+			// find other tokens
+			var events = {} // store all the found match here
 
-					// find other tokens
-					var events = {} // store all the found match here
-					var code = focused.matchAll(r.code);
-					var code_match = code.next();
+			// match all the tokens
+			var code = line_contents.matchAll(r.code);
+			var code_match = code.next();
 
-					var searching = true;
-					while (searching) {
-						searching = false;
+			var image = line_contents.matchAll(r.images);
+			var image_match = image.next();
 
-						if (!code_match.done) {
-							var result = code_match.value;
-							events[result.index] +=
+			var br = line_contents.matchAll(r.brTag);
+			var br_match = br.next();
+			// --------------------------------------
 
-							code_match = code.next()
-						}
+			var searching = true;
+			while (searching) {
+				searching = false;
+
+				if (!code_match.done) {
+					searching = true;
+					var result = code_match.value;
+					events[result.index] = {
+						"type": 10,
+						"length": 1 // always matches one character
 					}
 
+					code_match = code.next()
+				}
+				if (!image_match.done) {
+					searching = true;
+					var result = image_match.value;
+					events[result.index] = {
+						"type": 8,
+						"content": result[0],
+						"alt_text": result[1],
+						"path": result[2],
+						"title": result[3] != null ? result[3] : "" // optional last data
+					}
 
-					tokeniser_object.linenumber++;
-					tokeniser_object.contents = focused;
-					tokeniser_object.currentcontext = 7;
-					tokeniser_object.push();
+					image_match = image.next()
+				}
+				if (!br_match.done) {
+					searching = true;
+					var result = br_match.value;
+					events[result.index] = {
+						"type": -1, // special -1; as there are no reserved type numbers for br tags
+						"length": result[0].length
+					}
 
-					lastPointerIndex = result.index +result[0].length; // end index of captured string
-					br_match_obj = br_match.next()
+					br_match = br.next()
 				}
 			}
+
+			// loop through character by character to create the data to form the new line
+			var internal_lastPointer = 0;
+			for (let char_index = 0; char_index < focused.length; char_index++) {
+				var char = focused[char_index];
+
+				if (events[char_index] == null) {
+					continue // skip until it lands on an occupied index
+				}
+				var data = events[char_index];
+
+				if (tokeniser_object.is_raw) {
+					// ignore all other captured tokens if .is_raw is true
+					if (tokeniser_object.is_raw_esccond === data.type) {
+						// current captured token matches the escape condition; disable raw input; .is_raw = false
+						tokeniser_object.currentcontext = data.type;
+						tokeniser_object.is_raw = false
+					}
+				} else {
+					switch (data.type) {
+						case 8: // images
+						case 9: // links
+						case 10: // code
+							// first branch; add the new segmented line to line_data
+							tokeniser_object.currentcontext = 7;
+							tokeniser_object.contents = focused.slice(internal_lastPointer, char_index);
+							tokeniser_object.push();
+							// line_data.push({
+							// 	"type": 7,
+							// 	"content": )
+							// });
+							internal_lastPointer = char_index +evets[char_index].length
+						case 10:
+							// continue from first branch
+							tokeniser_object.currentcontext = 10;
+							tokeniser_object.push();
+							// line_data.push({
+							// 	"type": 10,
+							// })
+							break
+					}
+				}
+			}
+
+
+			tokeniser_object.linenumber++;
+			tokeniser_object.contents = focused;
+			tokeniser_object.currentcontext = 7;
+			tokeniser_object.push();
+
+			lastPointerIndex = result.index +result[0].length; // end index of captured string
+			br_match_obj = br_match.next()
 		} else {
 			tokeniser_object.linenumber++;
 			tokeniser_object.contents = line_contents;
