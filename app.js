@@ -6,7 +6,7 @@ const r = {
 	"brTag": /<br[\s]*(?:\/>|>)/g,
 	"header": /^(?<!\\)#{1,3}(?![^\s])/,
 	"images": /!\[(\[??[^\[]*?)\]\(([\w\d\/:]*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
-	"links": /(?<!!)\[(\[??[^\[\r\n]*?){1}\]\((\[??[^\(\r\n]*){1}\)/g,
+	"links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
 	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
 	"quoteblock": /^(?<!=\\)>/g
@@ -19,7 +19,7 @@ class Tokeniser {
 		this.contents = ""; // acts as a proxy to write ctual token details to ._contents
 		this.is_raw = false; // whether to capture tags
 		this.is_raw_esccond = 0; // escape condition for raw input and display such as code or code blocks
-		this.linenumber = 0; // actual line number in the rendered document
+		this.linenumber = 0; // actual line number in the rendered document; not zero-based; first line is line number 1
 		this.currentcontext = 0 // the current context; whether if its a paragraph or a code block
 	}
 
@@ -44,7 +44,8 @@ class Tokeniser {
 		let token_data = {
 			"line_number": this.linenumber,
 			"currentcontext": this.currentcontext
-		}
+		};
+
 		switch (this.currentcontext) {
 			case 1:
 			case 2:
@@ -56,25 +57,51 @@ class Tokeniser {
 				// all 6 headers & paragraph
 				if (this._contents.length === 0) {
 					// empty
-					this._contents = "&nbsp;"
-				}
+					this._contents = "&nbsp;";
+				};
 
-				token_data.contents = this._contents
+				token_data.contents = this._contents;
+				break;
 			case 8:
 				// images
-				token_data.alt_text = data[0],
-				token_data.title = data[1],
-				token_data.path = data[2]
+				token_data.alt_text = data[0];
+				token_data.path = data[1];
+				token_data.title = data[2];
+				break;
 			case 9:
 				// hyperlinks
-				token_data.text = data[0],
-				token_data.dest = data[1]
+				token_data.text = data[0];
+				token_data.dest = data[1];
+				break;
 			case 10:
 				// code, `
-		}
+				token_data.is_opening = data[0]; // true if backtick is the start of a new code
+				break;
+		};
 
 		this.tokens.push(token_data);
 		this.clear(); // clear all the data in .contents
+	}
+
+	beautify() {
+		// adds a new attribute, .beautified_tokens, that stores the new array
+		// with each element of that array being an array that contains
+		// the contents of the parsed document line
+		let beautified_tokens = [];
+
+		let ln = 0; // line number
+		let length = this.tokens.length;
+		for (let i, i < length; i++) {
+			if (this.tokens[i].linenumber > ln) {
+				// new line
+				ln++;
+
+				beautified_tokens.push([]); // add empty array representing linenumber ln
+			}
+			beautified_tokens[ln].push(this.tokens[i]);
+		}
+
+		this.beautified_tokens = beautified_tokens;
 	}
 }
 
@@ -170,29 +197,34 @@ function parserAction($targetviewer, resultCode) {
 	}
 }
 
-function tokenise(text) {
-	// returns a dict containing tokens
+function generate_tokens(text) {
+	// returns tokeniser_object; tokens are stored in .tokens attribute
+	// lexer?
 	const text_split = text.split(/\r?\n/);
 	const tokeniser_object = new Tokeniser();
 	console.log(tokeniser_object);
 
 	let split_len = text_split.length;
 	for (let fileline_number = 0; fileline_number < split_len; fileline_number++) {
+		console.log(fileline_number);
 		var line_contents = text_split[fileline_number];
+		var line_contents_length = line_contents.length;
 
 		// match all info here
-		// find br tags
 		if (!tokeniser_object.is_raw) {
 			if (line_contents.length === 0) {
 				// empty file line
-				if (tokeniser_object.currentcontext === 10) {
-					tokeniser_object.linenumber++;
+				if (tokeniser_object.currentcontext === 10 | tokeniser_object.contents.length > 0) {
+					// if previous token was a code. `example`, disregard it
+					// or if previous line was not pushed; push it
 					tokeniser_object.currentcontext = 7;
 					tokeniser_object.push(); // not a code; disregard it
 				}
 				tokeniser_object.linenumber++;
 				tokeniser_object.currentcontext = 7;
 				tokeniser_object.push();
+				tokeniser_object.linenumber++; // add for the next file line
+				console.log("exit: 0")
 
 				continue // move on to the next file line
 			}
@@ -221,6 +253,9 @@ function tokenise(text) {
 			var image = line_contents.matchAll(r.images);
 			var image_match = image.next();
 
+			var link = line_contents.matchAll(r.links);
+			var link_match = link.next();
+
 			var br = line_contents.matchAll(r.brTag);
 			var br_match = br.next();
 			// --------------------------------------
@@ -234,8 +269,8 @@ function tokenise(text) {
 					var result = code_match.value;
 					events[result.index] = {
 						"type": 10,
-						"length": 1 // always matches one character
-					}
+						"content": "`" // content field is needed for use when .is_raw is toggled on
+					};
 
 					code_match = code.next()
 				}
@@ -245,90 +280,162 @@ function tokenise(text) {
 					events[result.index] = {
 						"type": 8,
 						"content": result[0],
-						"alt_text": result[1],
+						"alt_text": result[1], // if alt text field is empty, will simply match and capture an empty string, ""
 						"path": result[2],
 						"title": result[3] != null ? result[3] : "" // optional last data
-					}
+					};
 
 					image_match = image.next()
+				}
+				if (!link_match.done) {
+					searching = true;
+					var result = link_match.value;
+					events[result.index] = {
+						"type": 9,
+						"content": result[0],
+						"text": result[1],
+						"dest": result[2]
+					};
+
+					link_match = link.next()
 				}
 				if (!br_match.done) {
 					searching = true;
 					var result = br_match.value;
 					events[result.index] = {
 						"type": -1, // special -1; as there are no reserved type numbers for br tags
-						"length": result[0].length
-					}
+						"content": result[0]
+					};
 
 					br_match = br.next()
 				}
 			}
 
+			console.log(events);
 			// loop through character by character to create the data to form the new line
 			var internal_lastPointer = 0;
-			for (let char_index = 0; char_index < focused.length; char_index++) {
-				var char = focused[char_index];
-
+			for (let char_index = 0; char_index < line_contents_length; char_index++) {
 				if (events[char_index] == null) {
 					continue // skip until it lands on an occupied index
 				}
 				var data = events[char_index];
+				console.log("data:", data)
 
 				if (tokeniser_object.is_raw) {
+					console.log("is_raw");
 					// ignore all other captured tokens if .is_raw is true
+					// add its raw content to tokensier_object
+					tokeniser_object.contents = line_contents.slice(internal_lastPointer, char_index);
+					internal_lastPointer = char_index +data.content.length; // set pointer location for next capture
 					if (tokeniser_object.is_raw_esccond === data.type) {
 						// current captured token matches the escape condition; disable raw input; .is_raw = false
+						// push current whats in first
+						if (tokeniser_object.contents.length > 0) {
+							tokeniser_object.currentcontext = 7;
+							tokeniser_object.push()
+						}
+
+						// add the closing block matched tag into tokens list
 						tokeniser_object.currentcontext = data.type;
-						tokeniser_object.is_raw = false
+						tokeniser_object.push(false); // closing block
+						tokeniser_object.currentcontext = 7; // reset currentcontext so it won't trigger condition to disregard code block on a new line
+						tokeniser_object.is_raw = false // toggle is_raw state
+					} else {
+						tokeniser_object.contents = data.content // add raw content of matched tag to tokeniser_object.content
 					}
 				} else {
 					switch (data.type) {
+						case -1: // br tags
 						case 8: // images
 						case 9: // links
 						case 10: // code
-							// first branch; add the new segmented line to line_data
+							// add current captured text up til now
+							console.log("i_l, c_i:", internal_lastPointer, char_index);
+							if (internal_lastPointer -char_index === 0) {
+								// empty line; matched tag was the first one; no captured text beforehand to push
+								tokeniser_object.currentcontext = data.type; // all there is to do is to set context
+								internal_lastPointer = char_index +data.content.length;
+								break
+							};
 							tokeniser_object.currentcontext = 7;
-							tokeniser_object.contents = focused.slice(internal_lastPointer, char_index);
+							tokeniser_object.contents = line_contents.slice(internal_lastPointer, char_index);
+							console.log(line_contents.slice(internal_lastPointer, char_index), internal_lastPointer, char_index);
 							tokeniser_object.push();
-							// line_data.push({
-							// 	"type": 7,
-							// 	"content": )
-							// });
-							internal_lastPointer = char_index +evets[char_index].length
+
+							tokeniser_object.currentcontext = data.type; // set context
+							internal_lastPointer = char_index +data.content.length;
+							console.log("next(internal_lastPointer):", data.content.length, internal_lastPointer)
+					} switch (data.type) {
+						case -1: // br tag
+							tokeniser_object.push();
+							tokeniser_object.linenumber++
+							break
+						case 8:
+							tokeniser_object.push(data.alt_text, data.path, data.title)
+							break
+						case 9:
+							tokeniser_object.push(data.text, data.dest)
+							break
 						case 10:
 							// continue from first branch
-							tokeniser_object.currentcontext = 10;
-							tokeniser_object.push();
-							// line_data.push({
-							// 	"type": 10,
-							// })
+							console.log(true);
+							tokeniser_object.push(true); // backtick in this case is always the start since is_raw condition will capture closing tag
+							// set is_raw state
+							tokeniser_object.is_raw = true;
+							// set escape condition
+							tokeniser_object.is_raw_esccond = 10;
 							break
 					}
 				}
 			}
-
-
-			tokeniser_object.linenumber++;
-			tokeniser_object.contents = focused;
-			tokeniser_object.currentcontext = 7;
-			tokeniser_object.push();
-
-			lastPointerIndex = result.index +result[0].length; // end index of captured string
-			br_match_obj = br_match.next()
+			console.log("<END>:", internal_lastPointer, line_contents_length)
+			if (internal_lastPointer < line_contents_length) {
+				// did not capture everything
+				tokeniser_object.currentcontext = 7;
+				tokeniser_object.contents = line_contents.slice(internal_lastPointer);
+				// no need to push
+			};
 		} else {
 			tokeniser_object.linenumber++;
 			tokeniser_object.contents = line_contents;
 			tokeniser_object.currentcontext = 7;
-			tokeniser_object.push()
+			tokeniser_object.push();
 		}
 	}
 
 	if (tokeniser_object.contents.length > 0) {
 		tokeniser_object.linenumber++;
-		tokeniser_object.push()
+		tokeniser_object.push();
 	}
-	console.log(tokeniser_object.tokens)
+	console.log(tokeniser_object.tokens);
+	tokeniser_object.beautify();
+	return tokeniser_object;
 }
+
+function new_parse(tokens) {
+	let length = tokens.length; // total number of lines
+	for (let ln = 0; ln < length, ln++) {
+		let merged_cont = ""; // string representing all the contents merged
+		let cont_len = tokens[ln].length;
+		for (let cn = 0; cn < cont_len; cn++) {
+			var data = tokens[ln][cn]
+			switch (data.type) {
+				case 1:
+				case 2:
+				case 3:
+				case 4:
+				case 5:
+				case 6:
+					// 1 - 6 headers
+					divobject.html(data.cotent);
+				case 7:
+
+			}
+		}
+
+	}
+}
+	
 
 function parse(text) {
 	// main function to parse text to html (text contents of .md file)
@@ -799,8 +906,7 @@ $(document).ready(function(e) {
 		console.log("Created file object");
 		$.when(fileobject).done(function(contents) {
 			console.log("File object returned contents");
-			tokenise(contents);
-			// parse(contents)
+			new_parse(generate_tokens(contents).beautified_tokens)
 		})
 
 		// reset value so .onchange will fire again despite same file being reuploaded
