@@ -8,7 +8,7 @@ const r = {
 	"images": /!\[(\[??[^\[]*?)\]\(([\w\d\/:]*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
 	"links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
 	"code": /(?<![`\\])`(?!`)/g,
-	"codeblock": /^```[\w\-]*?(?=[\s\n])/g,
+	"codeblock": /^(?:```([\w\-]*))(?=\s*\s$)/g,
 	"quoteblock": /^(?<!=\\)>/g
 }
 
@@ -42,7 +42,7 @@ class Tokeniser {
 	push(...data) {
 		// push collected (and finalised) token into this.tokens
 		let token_data = {
-			"line_number": this.linenumber,
+			"linenumber": this.linenumber,
 			"currentcontext": this.currentcontext
 		};
 
@@ -90,24 +90,20 @@ class Tokeniser {
 		let beautified_tokens = [];
 
 		let ln = 0; // line number
-		let length = this.tokens.length;
-		for (let i, i < length; i++) {
+		let token_length = this.tokens.length;
+		for (let i = 0; i < token_length; i++) {
 			if (this.tokens[i].linenumber > ln) {
 				// new line
 				ln++;
 
+				console.log("constructing");
 				beautified_tokens.push([]); // add empty array representing linenumber ln
 			}
-			beautified_tokens[ln].push(this.tokens[i]);
+			beautified_tokens[ln -1].push(this.tokens[i]);
 		}
 
 		this.beautified_tokens = beautified_tokens;
 	}
-}
-
-function format_tag(tag) {
-	// replaces all '<' and '>' with '&lt;' and '&gt;' respectively to render it as plain text
-	return tag.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function fetchfilefromserver(path) {
@@ -413,13 +409,17 @@ function generate_tokens(text) {
 }
 
 function new_parse(tokens) {
+	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
+	$targetviewer.empty(); // clear all rendered elements from $targetviewer
+
 	let length = tokens.length; // total number of lines
-	for (let ln = 0; ln < length, ln++) {
+	for (let ln = 0; ln < length; ln++) {
 		let merged_cont = ""; // string representing all the contents merged
 		let cont_len = tokens[ln].length;
 		for (let cn = 0; cn < cont_len; cn++) {
-			var data = tokens[ln][cn]
-			switch (data.type) {
+			var data = tokens[ln][cn];
+			console.log(data);
+			switch (data.currentcontext) {
 				case 1:
 				case 2:
 				case 3:
@@ -427,9 +427,22 @@ function new_parse(tokens) {
 				case 5:
 				case 6:
 					// 1 - 6 headers
-					divobject.html(data.cotent);
+					var divobject = parserAction($targetviewer, data.currentcontext);
+					console.log(data.contents);
+					divobject.html(data.contents);
 				case 7:
-
+					cont_len += data.contents; // treat content as is; tokens' content already include space padding if included
+				case 8:
+					var divobject = parserAction($targetviewer, data.currentcontext);
+					divobject.attr({
+						"alt": data.alt_text,
+						"src": data.path,
+						"title": data.title
+					});
+				case 9:
+					cont_len += `<a href=${data.dest}>${data.text}</a>`;
+				case 10:
+					cont_len += data.is_opening ? "<span class=\"markdownCODE\">" : "</span>";
 			}
 		}
 
