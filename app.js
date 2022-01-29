@@ -8,7 +8,7 @@ const r = {
 	"images": /!\[(\[??[^\[]*?)\]\((.*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
 	"links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
 	"code": /(?<![`\\])`(?!`)/g,
-	"codeblock": /^(?:```([\w\-]*))(?=\s*\s$)/g,
+	"codeblock": /^\s{0,3}(`{3,}|~{3,})\s*([\w\-]*)/,
 	"quoteblock": /^(?<!=\\)>/g
 }
 
@@ -23,7 +23,9 @@ class Tokeniser {
 		this.is_raw_esccond = 0; // escape condition for raw input and display such as code or code blocks
 
 		this.linenumber = 0; // actual line number in the rendered document; not zero-based; first line is line number 1
-		this.currentcontext = 0 // the current context; whether if its a paragraph or a code block
+		this.currentcontext = 0; // the current context; whether if its a paragraph or a code block
+
+		this.additional_data = {}; // misc data
 	}
 
 	get contents() {
@@ -80,6 +82,9 @@ class Tokeniser {
 				// code, `
 				token_data.is_opening = data[0]; // true if backtick is the start of a new code
 				break;
+			case 11:
+				token_data.is_opening = data[0]; // true if code fence is the start; false otherwise
+				token_data.language = data[1]; // code block language
 		};
 
 		this.tokens.push(token_data);
@@ -90,6 +95,7 @@ class Tokeniser {
 		// adds a new attribute, .beautified_tokens, that stores the new array
 		// with each element of that array being an array that contains
 		// the contents of the parsed document line
+		console.log(this.tokens);
 		let beautified_tokens = [];
 
 		let ln = 0; // line number
@@ -216,6 +222,8 @@ function parserAction($targetviewer, resultCode) {
 			// links, [text](route)
 		case 10:
 			// codes, `
+		case 11:
+			// codeblocks, ```lang
 	}
 }
 
@@ -250,7 +258,7 @@ function generate_tokens(text) {
 
 				continue // move on to the next file line
 			}
-			// match for headers first
+			// match entire line for headers first
 			r.header.lastIndex = 0; // reset regex pointer on every capture
 			var header = r.header.exec(line_contents);
 			if (header !== null) {
@@ -265,6 +273,31 @@ function generate_tokens(text) {
 
 				continue; // move on to the next file line
 			}
+			// match entire line for codeblock
+			r.codeblock.lastIndex = 0;
+			var codeblock = r.codeblock.exec(line_contents);
+			if (codeblock !== null) {
+				if (tokeniser_object.contents.length > 0) {
+					tokeniser_object.push() // push whatever is inside; unless empty
+				}
+
+				// no need to move to next line; since the next file line iteration will do that under .is_raw === true condition
+				tokeniser_object.linenumber++; // move to next line
+				tokeniser_object.currentcontext = 11; // codeblock context
+				tokeniser_object.push(true, codeblock[2]); // push(is_starting_block, language); if no language is present, will be an empty string
+
+				// set raw state and escape conditions
+				tokeniser_object.is_raw = true;
+				tokeniser_object.is_raw_esccond = 11;
+
+				// set additional data for use when trying to capture closing fence
+				tokeniser_object.additional_data.code_length = codeblock[1].length; // closing code fence must be atleast the same length
+				tokeniser_object.additional_data.language = codeblock[2];
+				// type of character used in opening and closing code fence must be the same as denoted in GFM spec
+				// length of closing code fence must be atleast the length of opening code fence
+				tokeniser_object.additional_data.closing_regexp = new RegExp(`^\\s{0,3}${codeblock[1][0]}{${codeblock[2].length},}\\s*$`)
+				continue; // move onto next file line
+			}
 
 			// find other tokens
 			var events = {} // store all the found match here
@@ -278,9 +311,6 @@ function generate_tokens(text) {
 
 			var link = line_contents.matchAll(r.links);
 			var link_match = link.next();
-
-			var codeblock = line_contents.matchAll(r.codeblock);
-			var codeblock_match = link.next();
 
 			var br = line_contents.matchAll(r.brTag);
 			var br_match = br.next();
@@ -338,7 +368,7 @@ function generate_tokens(text) {
 			}
 
 			console.log(events);
-			// loop through character by character to create the data to form the new line
+			// iterate through matched tokens; forming the new document line
 			var internal_lastPointer = 0;
 			for (let char_index = 0; char_index < line_contents_length; char_index++) {
 				if (events[char_index] == null) {
@@ -348,6 +378,7 @@ function generate_tokens(text) {
 				console.log("data:", data)
 
 				if (tokeniser_object.is_raw) {
+					// previous captured token caused raw input to be enabled (most likely code, `) 
 					console.log("is_raw");
 					// ignore all other captured tokens if .is_raw is true
 					// add its raw content to tokensier_object
@@ -358,7 +389,7 @@ function generate_tokens(text) {
 						// push current whats in first
 						if (tokeniser_object.contents.length > 0) {
 							tokeniser_object.currentcontext = 7;
-							tokeniser_object.push()
+							tokeniser_object.push();
 						}
 
 						// add the closing block matched tag into tokens list
@@ -378,9 +409,10 @@ function generate_tokens(text) {
 							// add current captured text up til now
 							console.log("i_l, c_i:", internal_lastPointer, char_index);
 							if (internal_lastPointer -char_index === 0) {
-								// empty line; matched tag was the first one; no captured text beforehand to push
+								// empty beforehand; matched tag was the first character; no captured text beforehand to push
 								// push current stored content if any
 								if (tokeniser_object.contents.length > 0) {
+									// from previous file line
 									tokeniser_object.currentcontext = 7;
 									tokeniser_object.push();
 								}
@@ -388,11 +420,12 @@ function generate_tokens(text) {
 								// all there is to do is to set context
 								tokeniser_object.currentcontext = data.type;
 								internal_lastPointer = char_index +data.content.length;
-								break;
+								break; // get out of switch statement
 							};
 							tokeniser_object.currentcontext = 7;
 							tokeniser_object.contents = line_contents.slice(internal_lastPointer, char_index);
 							console.log(line_contents.slice(internal_lastPointer, char_index), internal_lastPointer, char_index);
+							tokeniser_object.linenumber++;
 							tokeniser_object.push();
 
 							tokeniser_object.currentcontext = data.type; // set context
@@ -427,21 +460,45 @@ function generate_tokens(text) {
 				tokeniser_object.currentcontext = 7;
 				tokeniser_object.contents = line_contents.slice(internal_lastPointer);
 				console.log(tokeniser_object.contents)
-				// no need to push
+				// no need to push since it isnt the end of the entire file (could be but will be handled at end of file)
 			};
 		} else {
-			tokeniser_object.linenumber++;
+			// raw input
+			// match for escaping conditions; (entire file line)
+			switch (tokeniser_object.is_raw_esccond) {
+				case 11:
+					var matched = tokeniser_object.additional_data["closing_regexp"].test(line_contents);
+					if (matched) {
+						// tokensier_object.contents should be empty
+						tokeniser_object.currentcontext = 11;
+						tokeniser_object.push(false) // second argument is left out; language
+
+						// set is_raw to false
+						tokeniser_object.is_raw = false;
+
+						// move to next line for the next paragraph
+						tokeniser_object.linenumber++;
+
+						tokeniser_object.additional_data = {}; // new object; old one will be garbage collected
+						continue; // dont add current file line to contents and move on to the next file line
+					}
+			}
 			tokeniser_object.contents = line_contents;
 			tokeniser_object.currentcontext = 7;
 			tokeniser_object.push();
+
+			// increment line only after pushing current line; since current linenumber is for the current .contents
+			tokeniser_object.linenumber++;
 		}
 	}
 
 	if (tokeniser_object.contents.length > 0) {
+		// last file line did not push
 		tokeniser_object.linenumber++;
 		tokeniser_object.push();
 	}
-	tokeniser_object.beautify();
+
+	tokeniser_object.beautify(); // beautify tokens for parser function to accept
 	console.log(tokeniser_object.beautified_tokens);
 	return tokeniser_object;
 }
@@ -506,13 +563,18 @@ function new_parse(tokens) {
 					break;
 				case 10:
 					is_raw = data.is_opening;
-					parser_object.contents += data.is_opening ? `<span class=\"markdownCODE\" id=code-${raw_count}>` : "</span>";
+					parser_object.contents += is_raw ? `<span class=\"markdownCODE\" id=code-${raw_count}>` : "</span>";
 
 					if (is_raw) {
 						// increment uid variable and register key, value into raw_datamap
 						raw_datamap[raw_count++] = "";						
 					}
 					break;
+				case 11:
+					parser_object.push();
+
+					is_raw = data.is_opening;
+					// here
 			}
 		}
 		parser_object.push();

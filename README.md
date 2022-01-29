@@ -13,6 +13,11 @@ Being a LL(0) parser (or maybe a lack of experience), I had issues implementing 
     - Spec reference [🢡](https://github.github.com/gfm/#example-36)
   - Headers would not parse closing sequence of `#`.
     - Spec reference [🢡](https://github.github.com/gfm/#example-41)
+  - Setext headings are not supported.
+    - As mentioned, no lookahead is done.
+    - Spec reference [🢡](https://github.github.com/gfm/#setext-headings)
+  - Code cannot span multiple lines.
+    - Not to be confused with codeblocks, which can indeed span multiple lines.
 
 ## Future implementations
 - Support for LaTeX's math equations and displaying using 3rd party rendering engines.
