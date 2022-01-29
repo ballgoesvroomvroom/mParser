@@ -91,7 +91,7 @@ body {
 	flex-direction: row;
 	justify-content: center;
 	font-family: 'Barlow Condensed', sans-serif;
-	word-wrap: break-word;
+	word-break: break-word;
 	margin-bottom: 5px; /* for the box-shadow of 5px vertically */
 }
 
@@ -136,7 +136,7 @@ body {
 	/*padding-bottom: 5px;*/
 }
 
-.markdownBR {
+.markdownHR {
 	background-color: #c9c9c9;
 	border-radius: 1px;
 	min-width: 98%;

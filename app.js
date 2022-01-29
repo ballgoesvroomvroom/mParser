@@ -4,8 +4,8 @@ const targetviewer = "#target"
 const r = {
 	// regex strings for searching
 	"brTag": /<br[\s]*(?:\/>|>)/g,
-	"header": /^(?<!\\)#{1,3}(?![^\s])/,
-	"images": /!\[(\[??[^\[]*?)\]\(([\w\d\/:]*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
+	"header": /^(?<!\\)(\s{0,3})#{1,3}(?![^\s])/,
+	"images": /!\[(\[??[^\[]*?)\]\((.*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
 	"links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
 	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^(?:```([\w\-]*))(?=\s*\s$)/g,
@@ -15,10 +15,13 @@ const r = {
 class Tokeniser {
 	constructor() {
 		this.tokens = []; // store created token ojects in order here
+
 		this._contents = ""; // actual storage of token's details when constructing them
 		this.contents = ""; // acts as a proxy to write ctual token details to ._contents
+
 		this.is_raw = false; // whether to capture tags
 		this.is_raw_esccond = 0; // escape condition for raw input and display such as code or code blocks
+
 		this.linenumber = 0; // actual line number in the rendered document; not zero-based; first line is line number 1
 		this.currentcontext = 0 // the current context; whether if its a paragraph or a code block
 	}
@@ -96,13 +99,35 @@ class Tokeniser {
 				// new line
 				ln++;
 
-				console.log("constructing");
 				beautified_tokens.push([]); // add empty array representing linenumber ln
 			}
 			beautified_tokens[ln -1].push(this.tokens[i]);
 		}
 
 		this.beautified_tokens = beautified_tokens;
+	}
+}
+
+class Parser {
+	constructor() {
+		this.contents = "";
+	}
+	set($targetviewer) {
+		// sets the targetviewer element (jQuery) for use within push method when creating elements
+		this.$targetviewer = $targetviewer;
+	}
+	push() {
+		// creates and push normal paragraphs (content: 7); clears this.contents afterwards\
+		if (this.contents.length === 0) {
+			// empty stuff, nothing to parse
+			// even if paragraph is meant to be empty, token.contents should contain a &nbsp; tag atleast
+			// added this check to remove redundant checks outside of method
+			return;
+		}
+		var divobject = parserAction(this.$targetviewer, 7); // context is always 7
+		divobject.html(this.contents);
+
+		this.contents = "";
 	}
 }
 
@@ -133,8 +158,9 @@ function parserAction($targetviewer, resultCode) {
 
 	switch (resultCode) {
 		case 0:
+			// thematic line break
 			var $linebreak = $("<div>", {
-				"class": "markdownBR"
+				"class": "markdownHR"
 			})
 			$linebreak.appendTo($targetviewer)
 
@@ -202,9 +228,9 @@ function generate_tokens(text) {
 
 	let split_len = text_split.length;
 	for (let fileline_number = 0; fileline_number < split_len; fileline_number++) {
-		console.log(fileline_number);
 		var line_contents = text_split[fileline_number];
 		var line_contents_length = line_contents.length;
+		console.log(fileline_number, line_contents);
 
 		// match all info here
 		if (!tokeniser_object.is_raw) {
@@ -225,18 +251,19 @@ function generate_tokens(text) {
 				continue // move on to the next file line
 			}
 			// match for headers first
-			var header = line_contents.match(r.header);
+			r.header.lastIndex = 0; // reset regex pointer on every capture
+			var header = r.header.exec(line_contents);
 			if (header !== null) {
 				if (tokeniser_object.contents.length > 0) {
 					tokeniser_object.push() // push whatever is inside; unless empty
 				}
 
 				tokeniser_object.linenumber++; // move to next line
-				tokeniser_object.currentcontext	= header.length;
-				tokeniser_object.contents = line_contents.slice(header.length +1, -1);
-				tokeniser_object.push()
+				tokeniser_object.currentcontext	= header[0].length -header[1].length; // captures the 0-3 optional whitespaces at the front
+				tokeniser_object.contents = line_contents.slice(header[0].length +1);
+				tokeniser_object.push();
 
-				continue // move on to the next file line
+				continue; // move on to the next file line
 			}
 
 			// find other tokens
@@ -251,6 +278,9 @@ function generate_tokens(text) {
 
 			var link = line_contents.matchAll(r.links);
 			var link_match = link.next();
+
+			var codeblock = line_contents.matchAll(r.codeblock);
+			var codeblock_match = link.next();
 
 			var br = line_contents.matchAll(r.brTag);
 			var br_match = br.next();
@@ -349,9 +379,16 @@ function generate_tokens(text) {
 							console.log("i_l, c_i:", internal_lastPointer, char_index);
 							if (internal_lastPointer -char_index === 0) {
 								// empty line; matched tag was the first one; no captured text beforehand to push
-								tokeniser_object.currentcontext = data.type; // all there is to do is to set context
+								// push current stored content if any
+								if (tokeniser_object.contents.length > 0) {
+									tokeniser_object.currentcontext = 7;
+									tokeniser_object.push();
+								}
+
+								// all there is to do is to set context
+								tokeniser_object.currentcontext = data.type;
 								internal_lastPointer = char_index +data.content.length;
-								break
+								break;
 							};
 							tokeniser_object.currentcontext = 7;
 							tokeniser_object.contents = line_contents.slice(internal_lastPointer, char_index);
@@ -389,6 +426,7 @@ function generate_tokens(text) {
 				// did not capture everything
 				tokeniser_object.currentcontext = 7;
 				tokeniser_object.contents = line_contents.slice(internal_lastPointer);
+				console.log(tokeniser_object.contents)
 				// no need to push
 			};
 		} else {
@@ -403,8 +441,8 @@ function generate_tokens(text) {
 		tokeniser_object.linenumber++;
 		tokeniser_object.push();
 	}
-	console.log(tokeniser_object.tokens);
 	tokeniser_object.beautify();
+	console.log(tokeniser_object.beautified_tokens);
 	return tokeniser_object;
 }
 
@@ -412,13 +450,26 @@ function new_parse(tokens) {
 	const $targetviewer = $(targetviewer.concat(" .markdownpage .markdowncontents"));
 	$targetviewer.empty(); // clear all rendered elements from $targetviewer
 
+	const parser_object = new Parser();
+	parser_object.set($targetviewer)
+
 	let length = tokens.length; // total number of lines
+
+	let is_raw = false; // state for raw input & display
+	let raw_count = 0; // uid for raw input containers
+	let raw_datamap = {}; // mapping for raw input containers tag with their content
+
 	for (let ln = 0; ln < length; ln++) {
-		let merged_cont = ""; // string representing all the contents merged
 		let cont_len = tokens[ln].length;
+		if (cont_len === 1 && tokens[ln][0].currentcontext === -1) {
+			// an empty line (denoted by one br tag in the line)
+			parser_object.contents = "&nbsp;";
+			parser_object.push();
+
+			continue; // move onto the next line
+		}
 		for (let cn = 0; cn < cont_len; cn++) {
 			var data = tokens[ln][cn];
-			console.log(data);
 			switch (data.currentcontext) {
 				case 1:
 				case 2:
@@ -427,25 +478,49 @@ function new_parse(tokens) {
 				case 5:
 				case 6:
 					// 1 - 6 headers
+					parser_object.push(); // if .contents is empty, will be handled internally
+
 					var divobject = parserAction($targetviewer, data.currentcontext);
 					console.log(data.contents);
 					divobject.html(data.contents);
+					break;
 				case 7:
-					cont_len += data.contents; // treat content as is; tokens' content already include space padding if included
+					if (is_raw) {
+						raw_datamap[raw_count -1] += data.contents;
+					} else {
+						parser_object.contents += data.contents; // treat content as is; tokens' content already include space padding if included
+					}
+					break;
 				case 8:
+					parser_object.push();
+
 					var divobject = parserAction($targetviewer, data.currentcontext);
 					divobject.attr({
 						"alt": data.alt_text,
 						"src": data.path,
 						"title": data.title
 					});
+					break;
 				case 9:
-					cont_len += `<a href=${data.dest}>${data.text}</a>`;
+					parser_object.contents += `<a href=${data.dest}>${data.text}</a>`;
+					break;
 				case 10:
-					cont_len += data.is_opening ? "<span class=\"markdownCODE\">" : "</span>";
+					is_raw = data.is_opening;
+					parser_object.contents += data.is_opening ? `<span class=\"markdownCODE\" id=code-${raw_count}>` : "</span>";
+
+					if (is_raw) {
+						// increment uid variable and register key, value into raw_datamap
+						raw_datamap[raw_count++] = "";						
+					}
+					break;
 			}
 		}
+		parser_object.push();
+	}
 
+	// add in their raw content into corresponding containers
+	for (const [container_id, content] of Object.entries(raw_datamap)) {
+		$(`#code-${container_id}`).text(content)
 	}
 }
 	
