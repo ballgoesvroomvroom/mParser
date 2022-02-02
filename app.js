@@ -11,7 +11,8 @@ const r = {
 	"links": /(?<![!\\])\[([^\r\n]*)(?<!\\)\]\(([^\r\n'"]*?)(?:\s(['"(].*?['")]))?(?<!\\)\)/g,
 	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^\s{0,3}(`{3,}|~{3,})\s*([\w\-]*)/,
-	"quoteblock": /^(?<!=\\)>/g
+	"quoteblock": /^(?<!=\\)>/g,
+	"bold": /\*(.*?)(?<!\\)\*/g
 }
 
 class Tokeniser {
@@ -115,6 +116,26 @@ class Tokeniser {
 
 		this.beautified_tokens = beautified_tokens;
 	}
+}
+
+class Element {
+	constructor(contents) {
+		this.contents = contents; // actual element contents to be displayed
+		this.context = 7; // paragraph
+		this.tokens = [];
+		this.containsInlineElemenents = false;
+	}
+	
+	parseForInline() {
+		var bold = this.contents.matchAll(r.bold);
+		var bold_match = bold.next()
+		
+		while (true) {
+			if (!)
+		}
+	}
+	
+	get tokens 
 }
 
 class Parser {
@@ -230,6 +251,81 @@ function parserAction($targetviewer, resultCode) {
 	}
 }
 
+function generate_tokens_line(text) {
+	// returns a list of tokens from a single line text
+	// recursive; for parsing of inline contens
+	tokens = [];
+	// find other tokens
+	var events = {} // store all the found match here
+
+	// match all the tokens
+	var code = line_contents.matchAll(r.code);
+	var code_match = code.next();
+
+	var image = line_contents.matchAll(r.images);
+	var image_match = image.next();
+
+	var link = line_contents.matchAll(r.links);
+	var link_match = link.next();
+
+	var br = line_contents.matchAll(r.brTag);
+	var br_match = br.next();
+	// --------------------------------------
+
+	// don't remove '/' being used to escape characters here, since escape characters are considered as a character; will mess up indexing real bad
+	var searching = true;
+	while (searching) {
+		searching = false;
+
+		if (!code_match.done) {
+			searching = true;
+			var result = code_match.value;
+			events[result.index] = {
+				"type": 10,
+				"content": "`" // content field is needed for use when .is_raw is toggled on
+			};
+
+			code_match = code.next()
+		}
+		if (!image_match.done) {
+			searching = true;
+			var result = image_match.value;
+			events[result.index] = {
+				"type": 8,
+				"content": result[0],
+				"alt_text": result[1], // if alt text field is empty, will simply match and capture an empty string, ""
+				"path": result[2],
+				"title": result[3] != null ? result[3] : "" // optional last data
+			};
+
+			image_match = image.next()
+		}
+		if (!link_match.done) {
+			searching = true;
+			var result = link_match.value;
+			events[result.index] = {
+				"type": 9,
+				"content": result[0],
+				"text": result[1],
+				"dest": result[2],
+				"title": result[3] != null ? result[3] : ""
+			};
+
+			link_match = link.next()
+		}
+		if (!br_match.done) {
+			searching = true;
+			var result = br_match.value;
+			events[result.index] = {
+				"type": -1, // special -1; as there are no reserved type numbers for br tags
+				"content": result[0]
+			};
+
+			br_match = br.next()
+		}
+	}
+}
+
 function generate_tokens(text) {
 	// returns tokeniser_object; tokens are stored in .tokens attribute
 	// lexer?
@@ -302,75 +398,7 @@ function generate_tokens(text) {
 				continue; // move onto next file line
 			}
 
-			// find other tokens
-			var events = {} // store all the found match here
-
-			// match all the tokens
-			var code = line_contents.matchAll(r.code);
-			var code_match = code.next();
-
-			var image = line_contents.matchAll(r.images);
-			var image_match = image.next();
-
-			var link = line_contents.matchAll(r.links);
-			var link_match = link.next();
-
-			var br = line_contents.matchAll(r.brTag);
-			var br_match = br.next();
-			// --------------------------------------
-
-			// don't remove '/' being used to escape characters here, since escape characters are considered as a character; will mess up indexing real bad
-			var searching = true;
-			while (searching) {
-				searching = false;
-
-				if (!code_match.done) {
-					searching = true;
-					var result = code_match.value;
-					events[result.index] = {
-						"type": 10,
-						"content": "`" // content field is needed for use when .is_raw is toggled on
-					};
-
-					code_match = code.next()
-				}
-				if (!image_match.done) {
-					searching = true;
-					var result = image_match.value;
-					events[result.index] = {
-						"type": 8,
-						"content": result[0],
-						"alt_text": result[1], // if alt text field is empty, will simply match and capture an empty string, ""
-						"path": result[2],
-						"title": result[3] != null ? result[3] : "" // optional last data
-					};
-
-					image_match = image.next()
-				}
-				if (!link_match.done) {
-					searching = true;
-					var result = link_match.value;
-					events[result.index] = {
-						"type": 9,
-						"content": result[0],
-						"text": result[1],
-						"dest": result[2],
-						"title": result[3] != null ? result[3] : ""
-					};
-
-					link_match = link.next()
-				}
-				if (!br_match.done) {
-					searching = true;
-					var result = br_match.value;
-					events[result.index] = {
-						"type": -1, // special -1; as there are no reserved type numbers for br tags
-						"content": result[0]
-					};
-
-					br_match = br.next()
-				}
-			}
+			var events = generate_tokens_line(line_contents);
 
 			console.log(events);
 			// iterate through matched tokens; forming the new document line
@@ -452,7 +480,8 @@ function generate_tokens(text) {
 						case 9:
 							// remove escape characters
 							data.text = data.text.replaceAll(r.escaped, "");
-							data.dest = data.dest.replaceAll(r.escaped, "");
+							// no need to eacape url since all escaped characters are also valid url characters
+							// data.dest = data.dest.replaceAll(r.escaped, "");
 							data.title = data.title.replaceAll(r.escaped, "");
 							tokeniser_object.push(data.text, data.dest, data.title);
 							break;
@@ -712,7 +741,7 @@ function parse(text) {
 
 		// search for br tags; <br /> works too; any amount of whitespace before the slash
 		var msg_split = msg.split(r.brTag);
-		var msg_split_len = msg_split.length; // so no need to recalculate when using for loop? optimisations, not too sure. (っ °Д °;)っ
+		var msg_split_len = msg_split.length; // so no need to recalculate when using for loop? optimisations, not too sure. (ã£ Â°Ð” Â°;)ã£
 
 		// headers; since <br> tags are filtered out now
 		result = msg.match(r.header); // match the entire line; regardless of split
