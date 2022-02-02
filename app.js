@@ -3,10 +3,12 @@ const targetviewer = "#target"
 
 const r = {
 	// regex strings for searching
+	"escaped": /\\(?=[\\\/\(\)\:\'\"])/g, // used to remove slashes from escape characters 
 	"brTag": /<br[\s]*(?:\/>|>)/g,
 	"header": /^(?<!\\)(\s{0,3})#{1,3}(?![^\s])/,
 	"images": /!\[(\[??[^\[]*?)\]\((.*?(?:\.png|\.jpg|\.webp))(?:\s["'](.*?)["'])?\)/g,
-	"links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
+	// "links": /(?<!!)\[([^\[\r\n]*?)\]\(((?:[\w\.\\\/\:]|(?:\(.*\)))*?)\)/g, // support for nested loops
+	"links": /(?<![!\\])\[([^\r\n]*)(?<!\\)\]\(([^\r\n'"]*?)(?:\s(['"(].*?['")]))?(?<!\\)\)/g,
 	"code": /(?<![`\\])`(?!`)/g,
 	"codeblock": /^\s{0,3}(`{3,}|~{3,})\s*([\w\-]*)/,
 	"quoteblock": /^(?<!=\\)>/g
@@ -77,6 +79,7 @@ class Tokeniser {
 				// hyperlinks
 				token_data.text = data[0];
 				token_data.dest = data[1];
+				token_data.title = data[2];
 				break;
 			case 10:
 				// code, `
@@ -316,6 +319,7 @@ function generate_tokens(text) {
 			var br_match = br.next();
 			// --------------------------------------
 
+			// don't remove '/' being used to escape characters here, since escape characters are considered as a character; will mess up indexing real bad
 			var searching = true;
 			while (searching) {
 				searching = false;
@@ -350,7 +354,8 @@ function generate_tokens(text) {
 						"type": 9,
 						"content": result[0],
 						"text": result[1],
-						"dest": result[2]
+						"dest": result[2],
+						"title": result[3] != null ? result[3] : ""
 					};
 
 					link_match = link.next()
@@ -369,6 +374,7 @@ function generate_tokens(text) {
 
 			console.log(events);
 			// iterate through matched tokens; forming the new document line
+			// do the removing of escape characters here
 			var internal_lastPointer = 0;
 			for (let char_index = 0; char_index < line_contents_length; char_index++) {
 				if (events[char_index] == null) {
@@ -417,8 +423,11 @@ function generate_tokens(text) {
 									tokeniser_object.push();
 								}
 
-								// all there is to do is to set context
+								// all there is to do is to set context and add a new line if no lines have been added yet
 								tokeniser_object.currentcontext = data.type;
+								if (tokeniser_object.linenumber === 0) {
+									tokeniser_object.linenumber++;
+								};
 								internal_lastPointer = char_index +data.content.length;
 								break; // get out of switch statement
 							};
@@ -434,14 +443,19 @@ function generate_tokens(text) {
 					} switch (data.type) {
 						case -1: // br tag
 							tokeniser_object.push();
-							tokeniser_object.linenumber++
-							break
+							tokeniser_object.linenumber++;
+							break;
 						case 8:
-							tokeniser_object.push(data.alt_text, data.path, data.title)
-							break
+							// images
+							tokeniser_object.push(data.alt_text, data.path, data.title);
+							break;
 						case 9:
-							tokeniser_object.push(data.text, data.dest)
-							break
+							// remove escape characters
+							data.text = data.text.replaceAll(r.escaped, "");
+							data.dest = data.dest.replaceAll(r.escaped, "");
+							data.title = data.title.replaceAll(r.escaped, "");
+							tokeniser_object.push(data.text, data.dest, data.title);
+							break;
 						case 10:
 							// continue from first branch
 							console.log(true);
@@ -512,6 +526,9 @@ function new_parse(tokens) {
 
 	let length = tokens.length; // total number of lines
 
+	let link_count = 0;
+	let link_title = {};
+
 	let is_raw = false; // state for raw input & display
 	let raw_count = 0; // uid for raw input containers
 	let raw_datamap = {}; // mapping for raw input containers tag with their content
@@ -559,7 +576,10 @@ function new_parse(tokens) {
 					});
 					break;
 				case 9:
-					parser_object.contents += `<a href=${data.dest}>${data.text}</a>`;
+					link_count++;
+
+					parser_object.contents += `<a href=${data.dest} id=hyperlink-${link_count}>${data.text}</a>`;
+					link_title[link_count] = data.title
 					break;
 				case 10:
 					is_raw = data.is_opening;
@@ -583,6 +603,13 @@ function new_parse(tokens) {
 	// add in their raw content into corresponding containers
 	for (const [container_id, content] of Object.entries(raw_datamap)) {
 		$(`#code-${container_id}`).text(content)
+	}
+
+	// add in title to <a> tags since they support backslash escapes and entity and numeric character references
+	for (const [container_id, content] of Object.entries(link_title)) {
+		$(`#hyperlink-${container_id}`).attr({
+			"title": content
+		})
 	}
 }
 	
