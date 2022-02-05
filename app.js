@@ -138,6 +138,14 @@ class Element {
 	get tokens 
 }
 
+class Token {
+	// Token object
+	constructor() {
+		this.type = 7;
+		this.
+	}
+}
+
 class Parser {
 	constructor() {
 		this.contents = "";
@@ -253,10 +261,10 @@ function parserAction($targetviewer, resultCode) {
 
 function generate_tokens_line(text) {
 	// returns a list of tokens from a single line text
-	// recursive; for parsing of inline contens
-	tokens = [];
+	// useful for parsing of inline contens
+	const tokens = [];
 	// find other tokens
-	var events = {} // store all the found match here
+	const events = {} // store all the found match here
 
 	// match all the tokens
 	var code = line_contents.matchAll(r.code);
@@ -321,9 +329,13 @@ function generate_tokens_line(text) {
 				"content": result[0]
 			};
 
-			br_match = br.next()
+			br_match = br.next();
 		}
 	}
+
+	tokenObject 
+
+	return events;
 }
 
 function generate_tokens(text) {
